@@ -42,12 +42,16 @@
 # Version 3.0.10  Fix list of devices outside array
 #                 Take into account custom port numbers of telnet and ssh
 # Version 3.0.11  Use sdspin to monitor disks (provided by Doron)
+# Version 3.0.12  Fix sdspin failed to monitor disks (provided by Aravind Datla)
 #
 # Bergware International
 ####################################################################################
-version=3.0.11
+version=3.0.12
 program=$(basename $0)
 ini=/var/local/emhttp/disks.ini
+
+# Ensure PATH includes /usr/local/sbin
+export PATH=$PATH:/usr/local/sbin
 
 # Get flash device
 getFlash() {
@@ -61,7 +65,7 @@ getCache() {
 
 # Get list of array devices
 getArray() {
-  array=($(grep -PB13 '^type="(Parity|Data)' $ini|grep -Po '^device="\K[^"]+'))
+  array=($(grep -PB16 '^type="(Parity|Data)' $ini|grep -Po '^device="\K[^"]+'))
 }
 
 # Get list of all devices
@@ -74,6 +78,12 @@ if [[ $1 == -ED ]]; then
   getFlash
   getCache
   getArray
+
+  # log error if no array devices found
+  if [[ -z $array ]]; then
+    log "ERROR: No array devices found"
+  fi
+
   array+=(${flash[@]});
   [[ -n $cache ]] && array+=(${cache[@]})
   getDisks
@@ -239,14 +249,31 @@ HDD_activity() {
     [[ -f /dev/shm/2 ]] && cp -f /dev/shm/2 /dev/shm/1 || touch /dev/shm/1
     awk '/(sd[a-z]*|nvme[0-9]n1) /{print $3,$6+$10}' /proc/diskstats >/dev/shm/2
     for dev in ${array[@]}; do
-      [[ $monitor -ne 2 ]] && active=$(sdspin /dev/$dev) || active=
-      [[ $monitor -ne 1 ]] && diskio=($(grep -Pho "^$dev \K\d+" /dev/shm/1 /dev/shm/2)) || diskio=
-      if [[ -n $active || ${diskio[0]} != ${diskio[1]} ]]; then
+
+      # check for activity status
+      if [[ $monitor -ne 2 ]];then
+        # sdspin exit codes: 0=spun up, 1=error, 2=spun down
+        if command -v sdspin >/dev/null 2>&1; then
+          sdspin /dev/"$dev"
+          active=$?
+        else
+          log "sdspin command not found! Assuming disk /dev/$dev is active ((PATH is $PATH))."
+          active=0
+        fi
+      fi
+
+      # check for counters
+      if [[ $monitor -ne 1 ]];then
+        diskio=($(grep -Pho "^$dev \K\d+" /dev/shm/1 /dev/shm/2)) || diskio=
+      fi
+
+      if [[ $active -eq 0 || ${diskio[0]} != ${diskio[1]} ]]; then
         result=1
         break;
       fi
     done
   fi
+
   if [[ -n $result ]]; then
     log "Disk activity on going: $dev"
     echo $result

@@ -24,11 +24,23 @@ foreach ($new as $key => $value) {
     $options = '';
     break;
   case 'service':
+  case 'temp_source':
+  case 'hwmon_name':
+  case 'filter_mode':
+  case 'exclude':
+    // handled separately below or stored in cfg only
     break;
   default:
     if ($key[0]!='#') $options .= (isset($prefix[$key]) ? "-{$prefix[$key]} " : "")."$value ";
     break;
   }
+}
+// Build drive filter flag based on mode
+$filter_mode   = $new['filter_mode'] ?? 'exclude';
+$filter_drives = trim($new['exclude'] ?? '');
+if ($filter_drives) {
+  $flag = ($filter_mode === 'include') ? '-I' : '-e';
+  $options .= "$flag $filter_drives ";
 }
 $autofan = "$docroot/plugins/$plugin/scripts/rc.autofan";
 exec("$autofan stop >/dev/null");

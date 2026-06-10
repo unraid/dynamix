@@ -2,20 +2,46 @@
 
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "dynamix.system.autofan">
-<!ENTITY author    "Bergware/gfjardim">
-<!ENTITY version   "2025.11.14">
+<!ENTITY author    "mrjacobarussell (Enhanced Fork, based on Bergware/gfjardim)">
+<!ENTITY version   "2025.06.11">
 <!ENTITY launch    "Settings/FanSettings">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/unraid/dynamix/master/unRAIDv6/&name;.plg">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/mrjacobarussell/dynamix/corsair-commander-pro/unRAIDv6/&name;.plg">
 <!ENTITY source    "/boot/config/plugins/&name;/&name;">
-<!ENTITY MD5       "bc97a82871229d183f6d6a505897b483">
+<!ENTITY MD5       "9b42252d6a25a68b0e031f108690d363">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="6.9.0">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="6.9.0" icon="dynamix.system.autofan.png" support="https://github.com/mrjacobarussell/dynamix/issues">
 
 <CHANGES>
-##Dynamix System Autofan
+##Dynamix System Autofan (Enhanced Fork)
 
-###2025.11.14
+###2025.06.11 (mrjacobarussell)
+- FanSettings page: show the Dashboard Fan Labels custom name (if set) next to the PWM controller dropdown
+- FanSettings page: center-align all field labels and inputs
+
+###2025.06.10c (mrjacobarussell)
+- Fix description text: README headings (# ## ###) rendered oversized on Plugins page, shifting layout. Converted to bold.
+
+###2025.06.10b (mrjacobarussell)
+- Version bump (no functional change)
+
+###2025.06.10a (mrjacobarussell)
+- Recolor plugin icon to light blue
+
+###2025.06.10 (mrjacobarussell)
+- Rebrand: program name now "AutoFan Enhanced Fork by mrjacobarussell"
+- Add plugin icon and description for Plugins page
+- Update author/support links
+
+###2025.06.09 (mrjacobarussell)
+- Add hardware sensor probe temperature source (Corsair Commander Pro, hwmon sensors)
+- Stable hwmon device name resolution for USB controllers (fixes path loss after reboot)
+- New UI: Temperature source dropdown, sensor picker, stable device name field
+- Drive filter mode toggle (include/exclude selected drives)
+- Fix fan detect to only consider fans on same hwmon chip as selected PWM controller
+- Fan picker dropdown filtered by chip replaces free-text input
+
+###2025.11.14 (upstream)
 - Migrate repository to Unraid
 
 ###2023.02.05a
@@ -112,7 +138,7 @@ fi
 
 <!-- SOURCE PACKAGE -->
 <FILE Name="&source;.txz" Run="upgradepkg --install-new --reinstall">
-<URL>https://raw.githubusercontent.com/unraid/dynamix/master/archive/&name;.txz</URL>
+<URL>https://github.com/mrjacobarussell/dynamix/releases/download/2025.06.09/dynamix.system.autofan.txz</URL>
 <MD5>&MD5;</MD5>
 </FILE>
 
@@ -144,6 +170,7 @@ echo "-----------------------------------------------------------"
 echo " Plugin &name; is installed."
 echo " This plugin requires Dynamix webGui to operate"
 echo " Copyright 2023, Bergware International"
+echo " Enhanced fork by mrjacobarussell"
 echo " Version: &version;"
 echo "-----------------------------------------------------------"
 echo ""

@@ -20,33 +20,66 @@
 # Version 1.5   Modified by Bergware    - added nvme devices temperature reading (contributed by syntactic-salt)
 #                                       - added exclude disks from temperature reading (contributed by andreiio)
 # Version 1.6   Modified by InfinityMod - added multifan support
-#                                       - added fan spin up/down offset 
+#                                       - added fan spin up/down offset
+# Version 1.7   Modified by mrjacobarussell - stable hwmon path resolution by device name
+#                                           - resolves USB hwmon number changes across reboots
 plugin=dynamix.system.autofan
 script=autofan
 execute=/usr/local/emhttp/plugins/$plugin/scripts/$script
 cfg_path=/boot/config/plugins/$plugin
 
+# Find the current hwmon directory for a device by its kernel name.
+# hwmon numbers (hwmon0, hwmon1, ...) can change each reboot for USB devices.
+# If hwmon_name is set in cfg, this resolves the correct current path.
+resolve_hwmon() {
+  local name="$1"
+  local match
+  match=$(grep -rlx "$name" /sys/class/hwmon/*/name 2>/dev/null | head -1)
+  [[ -n $match ]] && dirname "$match"
+}
+
+# Substitute stale hwmon dir in a string with the current resolved dir.
+# Uses the saved controller path to identify which hwmonN was stored,
+# then replaces ALL occurrences in the target string (covers -c, -f, -s flags).
+resolve_hwmon_in_string() {
+  local str="$1" hwmon_name="$2" saved_controller="$3"
+  if [[ -n $hwmon_name && -n $saved_controller ]]; then
+    local current_dir saved_dir
+    current_dir=$(resolve_hwmon "$hwmon_name")
+    saved_dir=$(dirname "$saved_controller")
+    if [[ -n $current_dir && -n $saved_dir && "$saved_dir" != "$current_dir" ]]; then
+      str="${str//$saved_dir/$current_dir}"
+    fi
+  fi
+  echo "$str"
+}
+
 autofan.start() {
   for cfg in $cfg_path/$plugin*.cfg; do
     source $cfg
     if [[ $service == 1 ]]; then
-      $execute $options 1>/dev/null 2>&1
+      local resolved_options
+      resolved_options=$(resolve_hwmon_in_string "$options" "$hwmon_name" "$controller")
+      $execute $resolved_options 1>/dev/null 2>&1
       echo "$script started"
     fi
-  done 
+  done
 }
 
 autofan.stop() {
   for cfg in $cfg_path/$plugin*.cfg; do
     source $cfg
-    $execute -c $controller -f $fan -q 1>/dev/null 2>&1
+    local rc fan_path
+    rc=$(resolve_hwmon_in_string "$controller" "$hwmon_name" "$controller")
+    fan_path=$(resolve_hwmon_in_string "$fan" "$hwmon_name" "$controller")
+    $execute -c $rc -f $fan_path -q 1>/dev/null 2>&1
     timer=5
     until [[ -z $(pgrep -f $execute) || $timer -eq 0 ]]; do
       timer=$((timer-1))
       sleep 1
     done
     # set fan to max
-    echo 255 > $controller
+    [[ -f $rc ]] && echo 255 > $rc
     echo "$script stopped"
   done
 }
@@ -54,7 +87,10 @@ autofan.stop() {
 autofan.speed() {
   for cfg in $cfg_path/$plugin*.cfg; do
     source $cfg
-    [[ -f $controller && $(cat $fan) -gt 0 ]] &&  echo -n "$(($(($(cat $controller)*100))/255)) " || echo -n "0 "
+    local rc fan_path
+    rc=$(resolve_hwmon_in_string "$controller" "$hwmon_name" "$controller")
+    fan_path=$(resolve_hwmon_in_string "$fan" "$hwmon_name" "$controller")
+    [[ -f $rc && $(cat $fan_path) -gt 0 ]] && echo -n "$(($(($(cat $rc)*100))/255)) " || echo -n "0 "
   done
 }
 

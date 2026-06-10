@@ -16,6 +16,8 @@ Icon="dynamix.system.autofan.png"
  *
  * Version log:
  * Version 1.6   Modified by InfinityMod - added multifan support
+ * Version 1.7   Modified by mrjacobarussell - hwmon sensor probe temp source
+ *                                           - stable device name (hwmon_name) for USB controllers
  */
 ?>
 <?
@@ -29,12 +31,25 @@ function parse_autofan_cfg($plugin,$index) {
   return file_exists($rom) ? array_replace_recursive($cfg, parse_ini_file($rom)) : $cfg;
 }
 
-$index  = $_POST['index']?:'';
-$cfg    = parse_autofan_cfg($plugin,$index);
-$sName  = "autofan";
-$fName  = "$docroot/plugins/$plugin/scripts/$sName";
-$width  = strstr('gray,azure',$display['theme']) ? 305:300;
-$fan_id = 1;
+$index      = $_POST['index']?:'';
+$cfg        = parse_autofan_cfg($plugin,$index);
+$sName      = "autofan";
+$fName      = "$docroot/plugins/$plugin/scripts/$sName";
+$width      = strstr('gray,azure',$display['theme']) ? 305:300;
+$fan_id     = 1;
+$controller = $_POST['controller'] ?? $cfg['controller'] ?? '';
+$fan_filter = $controller ? realpath(dirname($controller)) : '';
+$fans       = list_fan_page($fan_filter);
+if (empty($fans) && $fan_filter) $fans = list_fan_page('');
+
+$cur_fan_sensor = $cfg['fan'] ?? '';
+$dash_fan_name  = '';
+foreach ($fans as $f) {
+  if ($f['sensor'] === $cur_fan_sensor) {
+    $dash_fan_name = dashboard_fan_name($f['chip'], $f['name']);
+    break;
+  }
+}
 
 function temp_val($val) {
   global $display;
@@ -56,6 +71,28 @@ function list_pwm() {
     foreach (preg_grep("/pwm\d+$/", scan_dir($chip)) as $pwm) $out[] = ['chip'=>$name, 'name'=>end(explode('/',$pwm)), 'sensor'=>$pwm];
   }
   return $out;
+}
+function list_fan_page($filter_real_dir = '') {
+  $out = [];
+  exec("find /sys/devices -type f -iname 'fan[0-9]_input' -exec dirname \"{}\" +|uniq", $chips);
+  foreach ($chips as $chip) {
+    if ($filter_real_dir && realpath($chip) !== $filter_real_dir) continue;
+    $name = is_file("$chip/name") ? trim(file_get_contents("$chip/name")) : '';
+    foreach (preg_grep("/fan\d+_input/", scan_dir($chip)) as $fan) {
+      $rpm = intval(file_get_contents($fan));
+      $out[] = ['chip'=>$name, 'name'=>end(explode('/',$fan)), 'sensor'=>$fan, 'rpm'=>$rpm];
+    }
+  }
+  return $out;
+}
+function dashboard_fan_name($chip, $sensor_name) {
+  static $names = null;
+  if ($names === null) {
+    $f = '/boot/config/plugins/dynamix/fan_names.json';
+    $names = file_exists($f) ? (json_decode(file_get_contents($f), true) ?: []) : [];
+  }
+  $fan_id = preg_replace('/_input$/', '', $sensor_name);
+  return $names["$chip - $fan_id"] ?? '';
 }
 function parity_disks($disk) {
   return $disk['type']=='Parity' && strpos($disk['status']??'','_NP')===false;
@@ -87,12 +124,11 @@ function tempVal(form) {
 function detectFan() {
   var pwm = $('select[name=controller]').val();
   if (pwm) {
-    $('input[name=fan]').val('_(Please wait)_...');
-    $('#fan').prop('disabled',true);
+    $('#detect_fan').prop('disabled',true).val('_(Please wait)_...');
     $.get('/plugins/<?=$plugin;?>/include/SystemFan.php',{op:'detect', pwm:pwm},function(data) {
-      $('input[name=fan]').val(data).trigger('change');
-      $('#fan').prop('disabled',false);
+      $('#detect_fan').prop('disabled',false).val('_(Detect)_');
       if (data) {
+        $('select[name=fan]').val(data).trigger('change');
         $('input[name=pwm]').prop('placeholder','_(Click DETECT)_');
         $('#pwm').prop('disabled',false);
       }
@@ -101,7 +137,7 @@ function detectFan() {
 }
 function detectFanLow() {
   var pwm = $('select[name=controller]').val();
-  var fan = $('input[name=fan]').val();
+  var fan = $('select[name=fan]').val();
   if (pwm && fan) {
     $('input[name=pwm]').val('_(Please wait)_...');
     $('#pwm').prop('disabled',true);
@@ -111,33 +147,103 @@ function detectFanLow() {
     });
   }
 }
+function autoPair() {
+  var pwm = $('select[name=controller]').val();
+  $('#autopair_btn').prop('disabled',true).val('_(Scanning...)_');
+  $('#autopair_results').html('<em>_(Please wait — cycling each PWM channel to detect fans...)_</em>');
+  $.getJSON('/plugins/<?=$plugin?>/include/SystemFan.php', {op:'autopair', pwm:pwm}, function(data) {
+    $('#autopair_btn').prop('disabled',false).val('_(Auto Pair)_');
+    if (!data || data.length === 0) {
+      $('#autopair_results').html('<span style="color:red">_(No fan/PWM pairs detected.)_</span>');
+      return;
+    }
+    var html = '<table style="margin-top:6px;border-collapse:collapse">';
+    html += '<tr><th style="padding:3px 8px;text-align:left">PWM</th><th style="padding:3px 8px;text-align:left">Fan</th><th style="padding:3px 8px;text-align:left">RPM change</th><th></th></tr>';
+    $.each(data, function(i, p) {
+      html += '<tr>';
+      html += '<td style="padding:3px 8px">' + p.chip + ' - ' + p.pwm_name + '</td>';
+      html += '<td style="padding:3px 8px">' + p.fan_name + '</td>';
+      html += '<td style="padding:3px 8px">+' + p.rpm_delta + ' rpm</td>';
+      html += '<td style="padding:3px 8px"><input type="button" value="_(Apply)_" onclick="applyPair(\'' + p.pwm + '\',\'' + p.fan + '\')"></td>';
+      html += '</tr>';
+    });
+    html += '</table>';
+    $('#autopair_results').html(html);
+  }).fail(function() {
+    $('#autopair_btn').prop('disabled',false).val('_(Auto Pair)_');
+    $('#autopair_results').html('<span style="color:red">_(Auto pair failed.)_</span>');
+  });
+}
+function applyPair(pwm, fan) {
+  $('select[name=controller]').val(pwm).trigger('change');
+  $('select[name=fan]').val(fan).trigger('change');
+  $('input[name=pwm]').prop('placeholder','_(Click DETECT)_');
+  $('#pwm').prop('disabled',false);
+  $('#autopair_results').html('');
+}
 function changePWM(index,value) {
   if (index > 0) index--;
   $('input[name=index]').val(index);
   $('input[name=controller]').val(value);
   document.updatepwm.submit();
 }
+function loadTempSensors() {
+  var current = '<?=htmlspecialchars($cfg['temp_sensor']??'')?>';
+  $.getJSON('/plugins/<?=$plugin?>/include/SystemFan.php', {op:'temps'}, function(data) {
+    var sel = $('#temp_sensor_select');
+    sel.empty();
+    sel.append('<option value="">_(None)_</option>');
+    $.each(data, function(i, item) {
+      var label = item.chip + ' - ' + item.label + ' (' + item.temp + '°C)';
+      var selected = (item.sensor === current) ? ' selected' : '';
+      sel.append('<option value="' + item.sensor + '"' + selected + '>' + label + '</option>');
+    });
+    if (current) sel.val(current);
+    $('input[name=temp_sensor]').val(sel.val() || '');
+  });
+  $('#temp_sensor_select').on('change', function() {
+    $('input[name=temp_sensor]').val(this.value);
+  });
+}
+function updateDriveFilterLabel(val) {
+  var label = val === 'include' ? '_(Include drives)_' : '_(Exclude drives)_';
+  $('#drive_filter_label').text(label);
+}
+function toggleTempSource(val) {
+  if (val === 'sensor') {
+    $('#temp_sensor_row').show();
+    loadTempSensors();
+  } else {
+    $('#temp_sensor_row').hide();
+  }
+}
 $(function() {
   showStatus('<?=$sName?>');
   $('#s1').dropdownchecklist({emptyText:'_(None)_', width:<?=$width?>, explicitClose:'..._(close)_'});
   if (!$('select[name=controller]').val()) {
-    $('input[name=fan]').val('').prop('placeholder','');
+    $('select[name=fan]').val('');
     $('input[name=pwm]').val('');
     $('input[name=low]').val('');
     $('input[name=high]').val('');
     $('input[name=interval]').val('');
     $('select[name=exclude]').val('');
-    $('#fan').prop('disabled',true);
+    $('#detect_fan').prop('disabled',true);
     $('#pwm').prop('disabled',true);
   }
+  toggleTempSource('<?=htmlspecialchars($cfg['temp_source']??'hdd')?>');
+  updateDriveFilterLabel('<?=htmlspecialchars($cfg['filter_mode']??'exclude')?>');
 });
 </script>
 
+<style>
+#fanauto-form dl > dt, #fanauto-form dl > dd { text-align:center; }
+#fanauto-form dl > dd > select, #fanauto-form dl > dd > input[type=text], #fanauto-form dl > dd > input[type=number] { margin:0 auto; }
+</style>
 <span class="bitstream" style="float:right;margin-right:12px"><?=exec("$fName -V")?></span>
-<form markdown="1" method="POST" action="/update.php" target="progressFrame" onsubmit="tempVal(this)">
+<form id="fanauto-form" markdown="1" method="POST" action="/update.php" target="progressFrame" onsubmit="tempVal(this)">
 <input type="hidden" name="#file" value="<?=$plugin?>/<?=$plugin.$index?>.cfg">
 <input type="hidden" name="#include" value="plugins/<?=$plugin?>/include/update.autofan.php">
-<input type="hidden" name="#prefix" value="controller=c&fan=f&pwm=l&low=t&high=T&interval=m&exclude=e">
+<input type="hidden" name="#prefix" value="controller=c&fan=f&pwm=l&low=t&high=T&interval=m&temp_sensor=s">
 
 _(Fan control function)_:
 : <select name="service">
@@ -146,18 +252,24 @@ _(Fan control function)_:
   </select>
 
 _(PWM controller)_:
-: <select name="controller" onchange="changePWM(this.selectedIndex,this.value)">
+: <?if ($dash_fan_name!==''):?><span class="orange-text" style="margin-right:8px">_(Dashboard label)_: <b><?=htmlspecialchars($dash_fan_name)?></b></span><?endif;?><select name="controller" onchange="changePWM(this.selectedIndex,this.value)">
   <?=mk_option($_POST['controller']??$cfg['controller']??'', "", _("None"))?>
   <?foreach (list_pwm() as $pwm):?>
   <?=mk_option($_POST['controller']??$cfg['controller']??'', $pwm['sensor'], "{$pwm['chip']} - {$pwm['name']}")?>
   <?endforeach;?>
-  </select>
+  </select><input type="button" id="autopair_btn" value="_(Auto Pair)_" onclick="autoPair()" style="margin:0" title="_(Cycles all PWM channels to automatically detect which fan each one controls)_">
+<div id="autopair_results" style="margin-top:4px"></div>
 
 _(PWM fan)_:
-: <input type="text" name="fan" value="<?=$cfg['fan']??''?>" placeholder="_(Click DETECT)_"><input type="button" id="fan" value="_(Detect)_" onclick="detectFan()" style="margin:0">
+: <select name="fan">
+  <?=mk_option($cfg['fan']??'', "", _("None"))?>
+  <?foreach ($fans as $f):?>
+  <?=mk_option($cfg['fan']??'', $f['sensor'], "{$f['chip']} - {$f['name']} ({$f['rpm']} rpm)")?>
+  <?endforeach;?>
+  </select><input type="button" id="detect_fan" value="_(Detect)_" onclick="detectFan()" style="margin:0" <?=$controller?'':'disabled'?>>
 
 _(Minimum PWM value)_:
-: <input type="text" name="pwm" value="<?=$cfg['pwm']??''?>" placeholder=""><input type="button" id="pwm" value="_(Detect)_" onclick="detectFanLow()" style="margin:0" <?=isset($cfg['fan'])?'':'disabled'?>>
+: <input type="text" name="pwm" value="<?=$cfg['pwm']??''?>" placeholder=""><input type="button" id="pwm" value="_(Detect)_" onclick="detectFanLow()" style="margin:0" <?=($cfg['fan']??'')?'':'disabled'?>>
 
 _(Low temperature threshold)_ (&deg;<?=$display['unit']?>):
 : <input type="number" name="low" min="0" max="200" value="<?=temp_val($cfg['low'])??''?>">
@@ -168,7 +280,13 @@ _(High temperature threshold)_ (&deg;<?=$display['unit']?>):
 _(Refresh interval)_ (_(minutes)_):
 : <input type="text" name="interval" value="<?=$cfg['interval']??''?>">
 
-_(Exclude drives)_:
+_(Drive filter mode)_:
+: <select name="filter_mode" onchange="updateDriveFilterLabel(this.value)">
+  <?=mk_option($cfg['filter_mode']??'exclude', "exclude", _("Exclude selected drives"))?>
+  <?=mk_option($cfg['filter_mode']??'exclude', "include", _("Include selected drives only"))?>
+  </select>
+
+<span id="drive_filter_label">_(Exclude drives)_</span>:
 : <select id="s1" name="exclude" style="display:none" multiple>
   <?foreach (array_filter($disks,'parity_disks') as $disk):?>
   <?=mk_option_check($cfg['exclude']??'',$disk['device'],sprintf('%s (%s)',_(my_disk($disk['name']),3),$disk['device']))?>
@@ -180,6 +298,24 @@ _(Exclude drives)_:
   <?=mk_option_check($cfg['exclude']??'',$disk['device'],sprintf('%s (%s)',_(my_disk($disk['name']),3),$disk['device']))?>
   <?endforeach;?>
   </select>
+
+_(Temperature source)_:
+: <select name="temp_source" onchange="toggleTempSource(this.value)">
+  <?=mk_option($cfg['temp_source']??'hdd', "hdd", _("Hard drives (smartctl)"))?>
+  <?=mk_option($cfg['temp_source']??'hdd', "sensor", _("Hardware sensor probe"))?>
+  </select>
+
+_(Temperature sensor)_:
+: <span id="temp_sensor_row">
+  <select id="temp_sensor_select" style="min-width:300px">
+    <option value="">_(Loading...)_</option>
+  </select>
+  <input type="hidden" name="temp_sensor" value="<?=htmlspecialchars($cfg['temp_sensor']??'')?>">
+  </span>
+
+_(Stable device name)_:
+: <input type="text" name="hwmon_name" value="<?=htmlspecialchars($cfg['hwmon_name']??'')?>" placeholder="e.g. corsaircpro" style="width:200px">
+  <br><span class="orange-text"><i>_(hwmon kernel name for stable path resolution — prevents USB controllers losing their fan paths after reboot. Leave blank for fixed motherboard fans.)_</i></span>
 
 <input type="submit" name="#default" value="_(Default)_">
 : <input type="submit" name="#apply" value="_(Apply)_"><input type="button" value="_(Done)_" onclick="done()">

@@ -1,155 +1,119 @@
-# Dynamix is now integrated in unRAID v6 and higher
+# Dynamix Auto Fan Control (Enhanced Fork)
 
-## Dynamix v2.2.10 - Obsolete
+Fork of [unraid/dynamix](https://github.com/unraid/dynamix) by [@mrjacobarussell](https://github.com/mrjacobarussell).
 
-#### Update
+Automatically controls fan speed based on temperature. This fork was built specifically to make Dynamix work correctly with the **Corsair Commander Pro** — fixing two fundamental problems the original has with USB fan controllers — and adds several quality-of-life improvements for all users.
 
-*Dynamix webGui has been updated to version 2.2.10. Thanks to the support of the unRAID community a number of fixes and improvements are introduced. See the folder "changes" for a list of what has been changed, including changes in the optional plugins. All users of earlier versions are encouraged to upgrade to this version.*
+---
 
-~~*Starting from version 2.1.0 there is code alignment with the 64-bit version which is released separately.*~~
+## The Corsair Commander Pro problem
 
-***64-bit version of Dynamix is now natively supported in unRAID OS6.  
-No further development is done anymore on this version.***
+The Corsair Commander Pro is a USB device. Linux exposes it through the `corsair_cpro` kernel module as an hwmon device (`/sys/class/hwmon/hwmonN/`). Two things break the original Dynamix plugin:
 
-*Starting from version 2.2.1 the new dashboard page is added to the GUI.*
+### Problem 1: hwmon number changes every reboot
 
+USB devices get their `hwmonN` number assigned at boot based on driver init order. Your Commander Pro might be `hwmon2` today and `hwmon5` after the next reboot. The original plugin saves the full path at config time — e.g. `/sys/class/hwmon/hwmon2/pwm1` — and uses it forever. After a reboot where the number changes, fan control silently stops working with no error.
 
-#### Introduction
+**This fork fixes it** by adding a **Stable device name** field. Set it to `corsaircpro` and `rc.autofan` will find the correct `hwmonN` directory by kernel device name every time it starts, regardless of what number it was assigned that boot.
 
-Dynamix webGui is a dynamic webGui for unRAID systems with enhanced features and optional add-ons.
+### Problem 2: Can't use Corsair temp probes as the fan control source
 
-Dynamix is a spin-off of the original [SimpleFeatures webGUI](http://lime-technology.com/forum/index.php?topic=12698) and is the next step in the evolution of the development of an enhanced webGui for unRAID systems.
-Its goal is to have pages dynamically updated and watch the operation of your unRAID server in real-time.
+The original plugin only reads temperature from hard drives via `smartctl`. The Commander Pro has onboard temperature probe headers (up to 4 probes) that are exposed as hwmon `temp*_input` files. There was no way to use these to drive fan speed.
 
-Dynamix webGui offers a number of improvements not available before:
+**This fork fixes it** by adding a **Temperature source** option. Switch from `Hard drives (smartctl)` to `Hardware sensor probe` and pick any hwmon sensor — including Corsair's probe inputs — from a live dropdown showing current readings.
 
-- Real-time page updates, the status view of your array is always up-to-date.
-- Tabbed viewing, more efficient use of the available screen area, scrolling is hardly required.
-- Improved visibility, better readibility and consistency of the sans-serif and monospace fonts in different browsers.
-- Improved operability, no more accidental cancellations or wrong button clicking.
-- Fully compatible with unRAID OS v5.0.
+---
 
-Dynamix webGui completely replaces the stock unRAID GUI which comes with version 5.0 or the enhanced Limetech webGui on github.
+## Install
 
-Do **not** use Dynamix webGui on any versions of unRAID other then 5.0.x.
+### Switching from the original Dynamix Auto Fan Control
 
-Do **not** run Dynamix in conjunction with the Limetech enhanced webGui, these are not compatible.
+If you already have the original plugin installed, remove it first — then install this fork. Your fan settings (`.cfg` file on the flash drive) are preserved through the swap.
 
-Do **not** mix Dynamix and SimpleFeatures plugins, these are not compatible.
+**Option A — Unraid web UI:**
+1. Go to **Plugins** in the Unraid web UI
+2. Find **Dynamix System Autofan**, click its icon → **Remove**
+3. Go to **Plugins** → **Install Plugin**
+4. Paste the URL below and click **Install**
 
-Dynamix webGui requires an up-to-date browser version. It has been tested with the latest versions of Internet Explorer, Chrome, Firefox and Safari.
-
-#### Download warning
-
-*DO NOT DOWNLOAD FILES DIRECTLY FROM THE FOLDERS 'DOWNLOAD' OR 'PLUGINS' BUT USE THE LINKS PROVIDED IN THIS 'README.MD' FILE INSTEAD.*
-
-#### Installation
-
-*This describes a first time installation, if you are upgrading from an older version, see the section 'Upgrading'.*
-
-Dynamix webGui is considered a system plugin and is installed in the folder `/boot/plugins`.
-This ensures it gets installed first, before any other plugins, and the correct environment is created upfront.
-
-- Login to the command line on your server, e.g., at the console or a telnet session.
-- Create the directory `/boot/plugins` directory, if it is not existing.
-- Type the below:
-
-```
-cd /boot/plugins
-wget --no-check-certificate https://raw.github.com/bergware/dynamix/master/plugins/dynamix.webGui-2.2.10-noarch-bergware.plg
+**Option B — Terminal (SSH into Unraid):**
+```bash
+plugin remove dynamix.system.autofan
+plugin install https://raw.githubusercontent.com/mrjacobarussell/dynamix/corsair-commander-pro/unRAIDv6/dynamix.system.autofan.plg
 ```
 
-- Alternatively: [![](/download/dynamix.webGui.png)](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.webGui-2.2.10-noarch-bergware.plg) (right-click and select "save link as")
+### Fresh install
 
-- Reboot your server to start with a *clean* webGui environment.
-- You may need to clear your Browser's cache for correct viewing.
-
-#### Upgrading
-
-People who have installed **Dynamix Plugin Control** can upgrade using the web GUI. The description below is to do a manual upgrade.
-
-You can upgrade to the latest version of [![](/download/dynamix.webGui.png)](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.webGui-2.2.10-noarch-bergware.plg) (right-click and select "save link as")
-
-Save the file in `/boot/plugins` and type the below:
+In Unraid, go to **Plugins** → **Install Plugin** and paste:
 
 ```
-cd /boot/plugins
-rm -f dynamix.webGui-2.2.*-noarch-bergware.plg
-installplg dynamix.webGui-2.2.10-noarch-bergware.plg
+https://raw.githubusercontent.com/mrjacobarussell/dynamix/corsair-commander-pro/unRAIDv6/dynamix.system.autofan.plg
 ```
 
-#### Optional plugins
+---
 
-The following plugins can be used to further enhance the functionality of Dynamix. They all require the Dynamix webGui to be present (installation of the add-on will be aborted when the webGui isn't detected). Right-click the links below and select "save link as". These plugins need to be placed in the directory `/boot/config/plugins`.
+## Corsair Commander Pro setup
 
-People who have installed **Dynamix Plugin Control** can install any optional plugin using the web GUI. The description below is to do a manual installation.
+**Prerequisites:** The `corsair_cpro` kernel module must be loaded. Add this to your Unraid `go` file if not already present:
 
-To install the plugin after copying it, telnet to your unRAID server and type the following:
-```
-cd /boot/config/plugins
-installplg <name-of-plugin>.plg
+```bash
+modprobe corsair_cpro
 ```
 
-If you are upgrading from an older version, do the following:
-```
-cd /boot/config/plugins
-rm <old-plugin-version>.plg
-installplg <new-plugin-version>.plg
-```
+**Configuration:**
 
-[![](/download/dynamix.plugin.control.png) Plugin Control](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.plugin.control-2.1.2-noarch-bergware.plg) - Install, Update and Uninstall Dynamix plugins via the GUI *(v2.1.2)*
+1. Open **Utilities → Fan Auto Control** in the Unraid web UI
+2. **PWM controller** — select your Corsair entry (shows as `corsaircpro - pwm1`, `pwm2`, etc.)
+3. **PWM fan** — dropdown now shows only Corsair fans filtered to that chip. Select the fan sensor you want to monitor RPM on. Use **Detect** to auto-identify which fan spins up when that PWM is cycled.
+4. **Temperature source** — switch to `Hardware sensor probe`
+5. **Temperature sensor** — pick a Corsair probe from the dropdown (shows live °C readings). Your probes appear as `corsaircpro - temp1_input`, etc.
+6. **Stable device name** — type `corsaircpro` — this is the kernel hwmon device name that keeps the paths stable across reboots
+7. **Apply**
 
-[![](/download/dynamix.active.streams.png) Active Streams](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.active.streams-2.1.1-noarch-bergware.plg) - View in real-time which streams are currently open *(v2.1.1)*
+Fan control will now survive reboots even when the Commander Pro gets a different hwmon number.
 
-[![](/download/dynamix.cache.dirs.png) Cache Dirs](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.cache.dirs-2.1.1-noarch-bergware.plg) - Keep directories in RAM to prevent unnecessary disk spin-up *(v2.1.1)*
+---
 
-[![](/download/dynamix.disk.health.png) Disk Health](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.disk.health-2.1.3-noarch-bergware.plg) - Display SMART information of your hard drives *(v2.1.3)*
+## All changes in this fork
 
-[![](/download/dynamix.dns.server.png) DNS Server](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.dns.server-2.1.0-noarch-bergware.plg) - Run your own DNS server to maintain your local domain *(v2.1.0)*
+### Stable USB hwmon path resolution
+`rc.autofan` resolves the current hwmon directory by kernel device name at start/stop time. The `hwmon_name` cfg field (e.g. `corsaircpro`) is the stable identifier — no udev rules needed. Works for any USB hwmon device, not just Corsair.
 
-[![](/download/dynamix.email.notify.png) Email Notify](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.email.notify-2.1.2-noarch-bergware.plg) - Receive periodic status updates by mail *(v2.1.2)*
+### Hardware sensor probe temperature source
+Any hwmon `temp*_input` file can now drive fan speed instead of (or instead of relying on) hard drive temperatures. Useful for case ambient probes, CPU package temp, chipset temp, or any sensor the kernel exposes via hwmon.
 
-[![](/download/dynamix.s3.sleep.png) S3 Sleep](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.s3.sleep-2.1.1-noarch-bergware.plg) - Put your system to sleep on predefined conditions *(v2.1.1)*
+### Fan picker dropdown filtered by chip
+The PWM fan field is now a dropdown of fan sensors, filtered to the same hwmon chip as the selected PWM controller. Picking a Corsair PWM shows only Corsair fans. Detect auto-selects the matched fan in the dropdown.
 
-[![](/download/dynamix.system.info.png) System Info](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.system.info-2.1.3-noarch-bergware.plg) - Get detailed hardware information about your system *(v2.1.3)*
+### Fan detect bug fix
+The original detect logic compared fans across all hwmon chips — a motherboard fan could win the RPM race when a USB controller PWM was being cycled. Fixed to only compare fans on the same chip as the selected PWM.
 
-[![](/download/dynamix.system.stats.png) System Stats](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.system.stats-2.1.4-noarch-bergware.plg) - Maintain statistics about your drives and system *(v2.1.4)*
+### Drive filter mode toggle
+The drive list can operate as an **include** list (monitor only selected drives) or an **exclude** list (skip selected drives). Useful when you want only specific array drives to influence fan speed.
 
-[![](/download/dynamix.system.temp.png) System Temp](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.system.temp-2.1.0-noarch-bergware.plg) - View in real-time CPU and motherboard temperatures *(v2.1.0)*
+---
 
-[![](/download/dynamix.web.server.png) Web Server](https://raw.github.com/bergware/dynamix/master/plugins/dynamix.web.server-2.1.1-noarch-bergware.plg) - Run your own web server, including PHP *(v2.1.1)*
+## Contributing / Upstream
 
+A pull request with these changes has been submitted to [unraid/dynamix#3](https://github.com/unraid/dynamix/pull/3).
 
-#### Screenshots
+---
 
-The main screen shows the different devices in separate tabs. The current screen is updated in real-time. Click on the tab header to move between screens.
+## Tips & usage notes
 
-![](/screenshots/main-page.png)
+### Enabling a PWM controller before configuring it
 
-Starting from version 2.2.1 there is the possibility to choose a black theme as well.
+The plugin requires the fan control service to be **Enabled** before the PWM fan dropdown is active. If you just selected a new PWM controller and the fan dropdown is empty or grayed out:
 
-![](/screenshots/main-black.png)
+1. Set **Fan control function** to `Enabled`
+2. Select your **PWM controller** (e.g. `corsaircpro - pwm5`)
+3. Set **PWM fan** to the matching fan (e.g. `fan5`)
+4. Click **Apply**
 
-The operation of the array (e.g. parity-check) can be viewed in real-time as well. When a parity-check is ongoing the statusbar at the bottom shows the current status in any screen. Note also the disabling of buttons to avoid accidental mis-clicking!
+You must apply with the service enabled before the settings take effect. Selecting a controller while the service is disabled and clicking Apply will save the config but not start control.
 
-![](/screenshots/main-paritycheck.png)
+### Max cooling mode (fans always full speed)
 
-Settings are logically grouped. This not only removes the clutter of a busy screen, but makes it also easier to find your way.
+If you want a fan zone to always run at full speed regardless of temperature — useful for hot drives or max airflow scenarios — set the **Drive filter mode** to `Include` and select **no drives**. With an empty include list, no drive temperature is ever read, `HIGHEST_TEMP` stays at 0, and the fan stays at whatever your low/off threshold dictates.
 
-![](/screenshots/settings.png)
-
-Monospace font is made more readable, both for main screen and popup screens.
-
-![](/screenshots/system-log.png)
-
-The Browser function has been rewritten for improved speed and visibility of duplicate files. These are clearly indicated by displaying them in orange.
-
-![](/screenshots/duplicates.png)
-
-The dashboard page gives you an instant overview of your system status. Screen updates happen in real-time.
-
-![](/screenshots/dashboard.png)
-
-The optional "plugin control" module allows for easy installation, updating and uninstallation of all of the available Dynamix plugins via the GUI. This way maintaining your plugins becomes a breeze!
-
-![](/screenshots/plugin-control.png)
+Alternatively, set your **Low temperature threshold** and **High temperature threshold** both to `0` — this forces the fan to full speed immediately since any temperature ≥ 0°C triggers 100%.

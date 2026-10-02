@@ -20,7 +20,17 @@ fi
 # Torqu3Wr3nch: Update code to handle only file.partial moves caused by the Unraid Mover. 
 pipe=/var/run/hash.pipe.$4
 [[ -p $pipe ]] || mkfifo $pipe
-inotifywait -dsrqo $pipe -e close_write,moved_to --exclude "$exclude" --format '%w%f' "/mnt/$4"
+# --exclude only filters events; inotifywait still watches every directory.
+# Pass excluded directories as @entries so they are not watched at all.
+# Sorted so each subtree is contiguous and only its topmost match is listed.
+# The "\-" escapes from update.watcher.php make newer grep warn; drop them.
+list=/var/run/hash.watch.$4
+echo "/mnt/$4" >$list
+if [[ -n $3 ]]; then
+  find "/mnt/$4" -mindepth 1 -type d -printf '%p/\n' 2>/dev/null | grep -E "${exclude//\\-/-}" | LC_ALL=C sort |
+    awk 'top=="" || index($0,top)!=1 {top=$0; print "@" substr($0,1,length($0)-1)}' >>$list
+fi
+inotifywait -dsrqo $pipe -e close_write,moved_to --exclude "$exclude" --format '%w%f' --fromfile $list
 
 # listener
 while read -r file; do

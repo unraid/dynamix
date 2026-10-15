@@ -129,7 +129,7 @@ progress() {
     [[ -n $volume ]] && ((complete+=$volume))
     local percent=$(awk 'BEGIN{printf("%0.1f",100*'$complete'/'$total')}')
     [[ $con -ne 0 ]] && echo -e "\r$1. Completed: $percent% ${eta}${rt}"
-    [[ $mon -ne 0 && -z $errorlink ]] && ((skip+fail+bad+warning)) > 0 && errorlink="<a onClick='showProblems(\"${tmpfile##*/}.2\",\"${monitor##*/}.end\")'><b class='icon-u-search'></b>Show Problems</a>"
+    [[ $mon -ne 0 && -z $errorlink ]] && (( (skip+fail+bad+warning) > 0 )) && errorlink="<a onClick='showProblems(\"${tmpfile##*/}.2\",\"${monitor##*/}.end\")'><b class='icon-u-search'></b>Show Problems</a>"
     [[ $mon -ne 0 ]] && echo -n "$percent%#<span class='orange-text orange-button'>$task <i class='fa fa-refresh fa-spin fa-fw'></i></span> $1 $errorlink#$eta" >$monitor
     past=$2
   fi

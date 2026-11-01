@@ -200,7 +200,13 @@ function_get_highest_hd_temp() {
   [[ $(version $version) -ge $(version "6.8.9") ]] && HDD=1 || HDD=
   for DISK in "${HD[@]}"; do
     # Get disk state using sdspin (new) or hdparm (legacy)
-    [[ -n $HDD ]] && SLEEPING=`sdspin ${DISK}; echo $?` || SLEEPING=`hdparm -C ${DISK}|grep -c standby`
+    if [[ $DISK == /dev/nvme[0-9] ]]; then
+      SLEEPING=0
+    elif [[ -n $HDD ]]; then
+      SLEEPING=`sdspin ${DISK}; echo $?`
+    else
+      SLEEPING=`hdparm -C ${DISK}|grep -c standby`
+    fi
     if [[ $SLEEPING -eq 0 ]]; then
       if [[ $DISK == /dev/nvme[0-9] ]]; then
         CURRENT_TEMP=$(smartctl -n standby -A $DISK | awk '$1=="Temperature:" {print $2;exit}')

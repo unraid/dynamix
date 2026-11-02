@@ -27,10 +27,11 @@
 # Version 1.7   Modified by doron       - Prevent spinning up SAS drives, use sdspin
 #                                       - Use "-n standby" flag in smartctl calls, extra safety
 #                                       - Obtain HD temp data from SAS drives
+# Version 1.8   Modified by hrv231      - Fix stale lockfile handling (no default-settings daemon on -q)
 #=======================================================================================
 # Dependencies: grep,awk,smartctl,hdparm
 #=======================================================================================
-version=1.7
+version=1.8
 program_name="autofan"
 usage() {
  echo "Usage: $program_name [-t min_temp] [-T max_temp] [-m loop in minutes] [-c controller] [-f fan] [-l low]"
@@ -137,13 +138,14 @@ if [[ -f $lockfile ]]; then
   lock_pid=`head -n 1 "${lockfile}"`
   pid_running=`ps -p "${lock_pid}" | grep ${lock_pid}`
   if [[ -z $pid_running ]]; then
-    if [[ $quit_flag == no ]]; then
+    if [[ $quit_flag != yes ]]; then
       # The process is not running
       # Echo current PID into lock file
       echo $$ > "${lockfile}"
     else
       echo "$program_name ${lock_pid} is not currently running "
       rm "${lockfile}"
+      exit 0
     fi
   else
     if [[ $quit_flag == yes ]]; then
